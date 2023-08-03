@@ -23,7 +23,6 @@ for fname in ["Debug-Top1000-1.txt", "Opt-Top1000-1.txt","Debug-Top1000-2.txt", 
 def params_via_cv(data):
     param_grid = {
         'ccp_alpha': [ 0.1, 0.2, 0.3, 0.4],
-        'max_depth': [2, 6, 10, 14, 18],
         'min_samples_split': [2, 3, 4],
         'max_features': [2, 4, 6]
         
@@ -32,23 +31,23 @@ def params_via_cv(data):
     grid_regr.fit(data[relevant_features], data["t_all__"])
     print(grid_regr.best_params_)
 
-def analyze(data):
+
+
+def analyze(data, rf):
     train_data, test_data, train_target, test_target = train_test_split(data[relevant_features], data["t_all__"],test_size=.3)
     
-    regr = RandomForestRegressor(ccp_alpha = 0.2, max_depth = 4, min_samples_split = 2, max_features = 2, n_estimators = 1000)
-    #regr = DecisionTreeRegressor(ccp_alpha = 0.2, max_depth = 10, min_samples_split = 6, max_features = 4)
-    regr.fit(train_data,train_target)
+    rf.fit(train_data,train_target)
     
-    feature_list = [(j,i) for (i,j) in zip(regr.feature_importances_, ["sttic", "rfn__", "ifn__", "rbb__", "ibb__", "rssd_", "issd_", "rstmt", "istmt", "rplac", "iplac", "rproj", "iproj", "rcnst", "icnst", "rdecl", "idecl"])]
+    feature_list = [(j,i) for (i,j) in zip(rf.feature_importances_, ["sttic", "rfn__", "ifn__", "rbb__", "ibb__", "rssd_", "issd_", "rstmt", "istmt", "rplac", "iplac", "rproj", "iproj", "rcnst", "icnst", "rdecl", "idecl"])]
     feature_list.sort(key=lambda e: e[1], reverse= True)
     for (name, importance) in feature_list:
         print(f"{name} {importance:.4f}")
         
-    accuracy = regr.score(test_data,test_target)
+    accuracy = rf.score(test_data,test_target)
     
     print(f"\nRegression Forest R^2 {accuracy:.3f}\n\n\n")
     
-    return regr
+    return rf
 
 def inp(df, exclude_columns=['est__', 't_all__', 't_gen__', 't_opt__', 't_lto__','relabel']):
     return df.drop(columns=list(set(exclude_columns) & set(df.columns)))
@@ -61,7 +60,7 @@ def relable(df, model):
     df['relabel'] = model.predict(inp(df))
     return df
     
-def distilled(data):
+def distilled(data, rf):
     # Split data into three four pieces:
     #   train to train the forest
     #   future to not be seen for either model
@@ -70,14 +69,13 @@ def distilled(data):
     future, test  = train_test_split(rest, test_size=0.5)
     all_data = pd.concat((train, test))
     
-    rf = RandomForestRegressor(ccp_alpha = 0.2, max_depth = 14, min_samples_split = 2, max_features = 2, n_estimators = 100)
     rf.fit(inp(train),out(train))
     
     # Create a new column that contains just the RF predictions
     relabled = relable(all_data,rf)
     
     # Overfit a single tree to match the RF predictions
-    dt = DecisionTreeRegressor(max_depth=6)
+    dt = DecisionTreeRegressor(max_depth=None)
     dt.fit(inp(relabled), out(relabled, 'relabel'))
     
     # Now both models are tested on withheld data
@@ -87,23 +85,29 @@ def distilled(data):
     
     print("\nDecision Tree R^2")
     print(dt.score(inp(future),out(future)))
+    #print(dt.get_depth())
     
     print("\nExisting Estimator R^2")
     print(r2_score(future['est__'],future['t_all__']))
     
     #plt.figure(figsize=(45,35))
     #sktree.plot_tree(dt,feature_names=relevant_features)
-
-
+    
+    rf, dt
 
 #params_via_cv(data[0])
-params_via_cv(data[1])
+dbg_fitted_model = RandomForestRegressor(ccp_alpha = 0.2, min_samples_split = 2, max_features = 2, n_estimators = 100)
+#params_via_cv(data[1])
+opt_fitted_model = RandomForestRegressor(ccp_alpha = 0.3, min_samples_split = 2, max_features = 4, n_estimators = 100)
 
-#print("Debug Data")
-#analyze(data[0])
-#distilled(data[0])
 
-#print("\n\n")
-#print("\n\nOpt Data")
-#analyze(data[1])
-#distilled(data[1])
+
+
+print("Debug Data")
+#analyze(data[0],dbg_fitted_model)
+distilled(data[0], dbg_fitted_model)
+
+print("\n\n")
+print("\n\nOpt Data")
+#analyze(data[1], opt_fitted_model)
+distilled(data[1], opt_fitted_model)
